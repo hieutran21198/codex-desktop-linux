@@ -373,6 +373,48 @@ function applyIdeDiscoveryPatch(currentSource, deps) {
   return patchedSource;
 }
 
+function applyLinuxIconPathResolutionPatch(currentSource) {
+  if (!currentSource.includes("iconPath?") || !currentSource.includes("async function d_(")) {
+    return currentSource;
+  }
+
+  let patchedSource = currentSource;
+  const linuxIconPlatformNeedle = "return(e===`win32`||e===`linux`)?Promise.all";
+  if (!patchedSource.includes(linuxIconPlatformNeedle)) {
+    const win32IconPlatformNeedle = "return e===`win32`?Promise.all";
+    if (patchedSource.includes(win32IconPlatformNeedle)) {
+      patchedSource = patchedSource.replace(
+        win32IconPlatformNeedle,
+        linuxIconPlatformNeedle,
+      );
+    } else {
+      warn("Could not find open target icon platform gate");
+    }
+  }
+
+  if (!patchedSource.includes("codexLinuxOpenTargetIconImage(")) {
+    const iconResolverNeedle =
+      "let r=e.toLowerCase().endsWith(`.lnk`)?await f_(e):await n.app.getFileIcon(e,{size:`normal`});return!r||r.isEmpty()?t:r.toDataURL()";
+    if (patchedSource.includes(iconResolverNeedle)) {
+      patchedSource = patchedSource.replace(
+        iconResolverNeedle,
+        "let r=codexLinuxOpenTargetIconImage(e)??(e.toLowerCase().endsWith(`.lnk`)?await f_(e):await n.app.getFileIcon(e,{size:`normal`}));return!r||r.isEmpty()?t:r.toDataURL()",
+      );
+      const resolverIndex = patchedSource.indexOf("async function d_(");
+      if (resolverIndex >= 0) {
+        patchedSource =
+          patchedSource.slice(0, resolverIndex) +
+          "function codexLinuxOpenTargetIconImage(e){if(process.platform!==`linux`||typeof e!==`string`||!/\\.(png|svg|jpe?g|bmp|ico)$/iu.test(e))return null;try{let t=n.nativeImage.createFromPath(e);return t.isEmpty()?null:t}catch{return null}}" +
+          patchedSource.slice(resolverIndex);
+      }
+    } else {
+      warn("Could not find open target icon resolver");
+    }
+  }
+
+  return patchedSource;
+}
+
 function applyMainBundlePatch(currentSource) {
   const electronVar = requireName(currentSource, "electron");
   const fsVar = requireName(currentSource, "node:fs");
@@ -389,6 +431,7 @@ function applyMainBundlePatch(currentSource) {
   }
   patchedSource = applyTerminalDiscoveryPatch(patchedSource, deps);
   patchedSource = applyIdeDiscoveryPatch(patchedSource, deps);
+  patchedSource = applyLinuxIconPathResolutionPatch(patchedSource);
   return patchedSource;
 }
 
