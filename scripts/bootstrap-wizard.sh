@@ -337,23 +337,24 @@ computer_use_ydotool_packages() {
 }
 
 uinput_summary() {
-    if [ ! -e /dev/uinput ]; then
+    local uinput_path="${CODEX_BOOTSTRAP_UINPUT_PATH:-/dev/uinput}"
+    if [ ! -e "$uinput_path" ]; then
         printf 'missing'
         return
     fi
 
     local access="no read/write access"
-    if [ -r /dev/uinput ] && [ -w /dev/uinput ]; then
+    if [ -r "$uinput_path" ] && [ -w "$uinput_path" ]; then
         access="read/write access"
-    elif [ -r /dev/uinput ]; then
+    elif [ -r "$uinput_path" ]; then
         access="read-only access"
-    elif [ -w /dev/uinput ]; then
+    elif [ -w "$uinput_path" ]; then
         access="write-only access"
     fi
 
     local stat_output=""
-    if command -v stat >/dev/null 2>&1; then
-        stat_output="$(stat -c '%A %U:%G' /dev/uinput 2>/dev/null || true)"
+    if command -v stat >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
+        stat_output="$(timeout 1 stat -c '%A %U:%G' "$uinput_path" 2>/dev/null || true)"
     fi
     printf '%s%s' "$access" "${stat_output:+ ($stat_output)}"
 }
@@ -869,12 +870,16 @@ run_feature_cleanup() {
     [ -n "$cleanup_raw" ] || return
     validate_cleanup_feature_ids "$cleanup_raw"
 
-    if noninteractive_mode; then
+    if noninteractive_mode && ! dry_run_enabled; then
         error "Cleanup requires an interactive terminal and exact path confirmation."
     fi
 
     info "Feature cleanup is separate from disabling features for the next rebuild."
-    info "Only paths confirmed with the exact DELETE line will be removed."
+    if dry_run_enabled; then
+        info "Dry-run cleanup: matching paths will be printed and not deleted."
+    else
+        info "Only paths confirmed with the exact DELETE line will be removed."
+    fi
 
     if list_includes_id "$cleanup_raw" "remote-mobile-control"; then
         local config_home="${XDG_CONFIG_HOME:-$HOME/.config}"

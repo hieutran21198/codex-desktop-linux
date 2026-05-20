@@ -1091,6 +1091,37 @@ test_setup_native_wizard_prints_deep_readiness_guidance() {
     assert_contains "$output_log" "Read Aloud plugin cache:"
 }
 
+test_setup_native_wizard_uinput_stat_is_bounded() {
+    info "Checking setup-native wizard bounds slow uinput metadata reads"
+    local workspace="$TMP_DIR/setup-native-uinput-stat"
+    local features_root="$workspace/linux-features"
+    local config="$workspace/features.json"
+    local output_log="$workspace/output.log"
+    local bin_dir="$workspace/bin"
+    local fake_uinput="$workspace/uinput"
+
+    make_wizard_feature_root "$features_root"
+    printf '%s\n' '{"enabled":[]}' > "$config"
+    mkdir -p "$bin_dir"
+    printf '%s\n' 'fake uinput' > "$fake_uinput"
+    cat > "$bin_dir/stat" <<'SCRIPT'
+#!/usr/bin/env bash
+sleep 5
+printf '%s\n' 'unexpected stat output'
+SCRIPT
+    chmod +x "$bin_dir/stat"
+
+    PATH="$bin_dir:$PATH" \
+    CODEX_BOOTSTRAP_NONINTERACTIVE=1 \
+    CODEX_BOOTSTRAP_UINPUT_PATH="$fake_uinput" \
+    CODEX_LINUX_FEATURES_ROOT="$features_root" \
+    CODEX_LINUX_FEATURES_CONFIG="$config" \
+        timeout 3 bash "$REPO_DIR/scripts/bootstrap-wizard.sh" >"$output_log"
+
+    assert_contains "$output_log" "uinput=read/write access"
+    assert_not_contains "$output_log" "unexpected stat output"
+}
+
 test_setup_native_wizard_read_aloud_paths_match_runtime_defaults() {
     info "Checking setup-native wizard Read Aloud default paths and Linux app id"
     local workspace="$TMP_DIR/setup-native-read-aloud-defaults"
@@ -1170,6 +1201,34 @@ test_setup_native_wizard_cleanup_requires_interactive_confirmation() {
 
     assert_file_exists "$key_file"
     assert_contains "$output_log" "Cleanup requires an interactive terminal and exact path confirmation."
+}
+
+test_setup_native_wizard_dry_run_cleanup_allows_noninteractive_preview() {
+    info "Checking setup-native wizard non-interactive dry-run cleanup preview"
+    local workspace="$TMP_DIR/setup-native-cleanup-dry-run-noninteractive"
+    local features_root="$workspace/linux-features"
+    local config="$workspace/features.json"
+    local output_log="$workspace/output.log"
+    local fake_home="$workspace/home"
+    local key_file="$fake_home/.config/codex-desktop/remote-control-device-keys-v1.json"
+
+    make_wizard_feature_root "$features_root"
+    printf '%s\n' '{"enabled":["remote-mobile-control"]}' > "$config"
+    mkdir -p "$(dirname "$key_file")"
+    printf '%s\n' '{"deviceKeys":[]}' > "$key_file"
+
+    HOME="$fake_home" \
+    XDG_CONFIG_HOME="$fake_home/.config" \
+    CODEX_BOOTSTRAP_NONINTERACTIVE=1 \
+    CODEX_BOOTSTRAP_DRY_RUN=1 \
+    CODEX_BOOTSTRAP_CLEANUP_FEATURES="remote-mobile-control" \
+    CODEX_LINUX_FEATURES_ROOT="$features_root" \
+    CODEX_LINUX_FEATURES_CONFIG="$config" \
+        bash "$REPO_DIR/scripts/bootstrap-wizard.sh" >"$output_log"
+
+    assert_file_exists "$key_file"
+    assert_contains "$output_log" "Would delete: $key_file"
+    assert_not_contains "$output_log" "Cleanup requires an interactive terminal"
 }
 
 test_setup_native_wizard_dry_run_cleanup_does_not_delete_confirmed_paths() {
@@ -4252,9 +4311,11 @@ main() {
     test_setup_native_wizard_warns_when_conversation_mode_lacks_read_aloud
     test_setup_native_wizard_dry_runs_deps_and_install_native
     test_setup_native_wizard_prints_deep_readiness_guidance
+    test_setup_native_wizard_uinput_stat_is_bounded
     test_setup_native_wizard_read_aloud_paths_match_runtime_defaults
     test_setup_native_wizard_sway_hint_is_conservative
     test_setup_native_wizard_cleanup_requires_interactive_confirmation
+    test_setup_native_wizard_dry_run_cleanup_allows_noninteractive_preview
     test_setup_native_wizard_dry_run_cleanup_does_not_delete_confirmed_paths
     test_setup_native_wizard_cleanup_deletes_only_confirmed_paths
     test_upstream_build_app_workflow_tracks_dmg_metadata
