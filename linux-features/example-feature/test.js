@@ -49,6 +49,11 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function writeFeatureManifest(featureDir, value) {
+  writeJson(path.join(featureDir, "feature.json"), value);
+  fs.writeFileSync(path.join(featureDir, "README.md"), `# ${value.title ?? value.id}\n`);
+}
+
 test("example feature patches only its synthetic marker", () => {
   assert.equal(
     applyMainBundlePatch("before;codexLinuxExampleFeatureDisabled();after"),
@@ -96,7 +101,7 @@ test("example feature exposes its patch and stage hook when enabled", () => {
 test("local Linux features are discovered and enabled from linux-features/local", () => {
   withTempFeatureRoot(["local-example"], (root) => {
     const localDir = path.join(root, "local", "local-example");
-    writeJson(path.join(localDir, "feature.json"), {
+    writeFeatureManifest(localDir, {
       id: "local-example",
       title: "Local Example",
       description: "Developer-local feature.",
@@ -116,7 +121,7 @@ test("local Linux features are discovered and enabled from linux-features/local"
 
 test("local Linux features cannot shadow repository features", () => {
   withTempFeatureRoot([], (root) => {
-    writeJson(path.join(root, "local", "example-feature", "feature.json"), {
+    writeFeatureManifest(path.join(root, "local", "example-feature"), {
       id: "example-feature",
       title: "Duplicate Example",
     });
@@ -128,9 +133,23 @@ test("local Linux features cannot shadow repository features", () => {
   });
 });
 
+test("Linux features must include README documentation", () => {
+  withTempFeatureRoot([], (root) => {
+    writeJson(path.join(root, "local", "missing-readme", "feature.json"), {
+      id: "missing-readme",
+      title: "Missing README",
+    });
+
+    assert.throws(
+      () => discoverLinuxFeatureManifests({ featuresRoot: root }),
+      /must include README\.md next to feature\.json/,
+    );
+  });
+});
+
 test("Linux features must stay disabled by default", () => {
   withTempFeatureRoot([], (root) => {
-    writeJson(path.join(root, "local", "bad-default", "feature.json"), {
+    writeFeatureManifest(path.join(root, "local", "bad-default"), {
       id: "bad-default",
       title: "Bad Default",
       defaultEnabled: true,
@@ -145,7 +164,7 @@ test("Linux features must stay disabled by default", () => {
 
 test("Linux feature dependencies and conflicts are validated", () => {
   withTempFeatureRoot(["needs-other"], (root) => {
-    writeJson(path.join(root, "local", "needs-other", "feature.json"), {
+    writeFeatureManifest(path.join(root, "local", "needs-other"), {
       id: "needs-other",
       requires: ["other-feature"],
     });
@@ -157,11 +176,11 @@ test("Linux feature dependencies and conflicts are validated", () => {
   });
 
   withTempFeatureRoot(["left-feature", "right-feature"], (root) => {
-    writeJson(path.join(root, "local", "left-feature", "feature.json"), {
+    writeFeatureManifest(path.join(root, "local", "left-feature"), {
       id: "left-feature",
       conflicts: ["right-feature"],
     });
-    writeJson(path.join(root, "local", "right-feature", "feature.json"), {
+    writeFeatureManifest(path.join(root, "local", "right-feature"), {
       id: "right-feature",
     });
 
@@ -175,7 +194,7 @@ test("Linux feature dependencies and conflicts are validated", () => {
 test("declarative Linux feature install plan stages resources and runtime hooks", () => {
   withTempFeatureRoot(["local-tool"], (root) => {
     const localDir = path.join(root, "local", "local-tool");
-    writeJson(path.join(localDir, "feature.json"), {
+    writeFeatureManifest(localDir, {
       id: "local-tool",
       title: "Local Tool",
       resources: [
@@ -261,7 +280,7 @@ test("declarative Linux feature install plan stages resources and runtime hooks"
 test("declarative Linux feature staging removes stale runtime hooks after opt-out", () => {
   withTempFeatureRoot(["local-tool"], (root) => {
     const localDir = path.join(root, "local", "local-tool");
-    writeJson(path.join(localDir, "feature.json"), {
+    writeFeatureManifest(localDir, {
       id: "local-tool",
       runtimeHooks: {
         env: "env",
@@ -300,7 +319,7 @@ test("declarative Linux feature staging removes stale runtime hooks after opt-ou
 
 test("declarative Linux feature staging cleans pre-manifest generated runtime hooks", () => {
   withTempFeatureRoot([], (root) => {
-    writeJson(path.join(root, "local", "local-tool", "feature.json"), {
+    writeFeatureManifest(path.join(root, "local", "local-tool"), {
       id: "local-tool",
       runtimeHooks: {
         env: "env",
@@ -326,7 +345,7 @@ test("declarative Linux feature resources cannot target the install root", () =>
   for (const target of [".", "./"]) {
     withTempFeatureRoot(["root-target"], (root) => {
       const localDir = path.join(root, "local", "root-target");
-      writeJson(path.join(localDir, "feature.json"), {
+      writeFeatureManifest(localDir, {
         id: "root-target",
         resources: [
           {
@@ -375,7 +394,7 @@ test("declarative Linux feature staging refuses root targets from stale manifest
 test("numeric Linux feature file modes are rejected", () => {
   withTempFeatureRoot(["bad-mode"], (root) => {
     const localDir = path.join(root, "local", "bad-mode");
-    writeJson(path.join(localDir, "feature.json"), {
+    writeFeatureManifest(localDir, {
       id: "bad-mode",
       resources: [
         {

@@ -58,7 +58,7 @@ The helper lists exact paths and deletes only paths confirmed with
 `DELETE <exact path>`. Add `CODEX_BOOTSTRAP_DRY_RUN=1` to preview cleanup
 targets without deleting them.
 
-Each feature directory should include:
+Each feature directory must include:
 
 - `feature.json` — metadata and entrypoints
 - `README.md` — what it does, how to test it, and known risks

@@ -95,18 +95,23 @@ make_wizard_feature_root() {
     cat > "$features_root/conversation-mode/feature.json" <<'JSON'
 {"id":"conversation-mode","name":"Conversation mode","description":"Voice conversation loop."}
 JSON
+    printf '%s\n' '# Conversation Mode' > "$features_root/conversation-mode/README.md"
     cat > "$features_root/example-feature/feature.json" <<'JSON'
 {"id":"example-feature","title":"Example Linux Feature","description":"Developer sample."}
 JSON
+    printf '%s\n' '# Example Linux Feature' > "$features_root/example-feature/README.md"
     cat > "$features_root/read-aloud/feature.json" <<'JSON'
 {"id":"read-aloud","name":"Read aloud","description":"Read assistant responses aloud."}
 JSON
+    printf '%s\n' '# Read Aloud' > "$features_root/read-aloud/README.md"
     cat > "$features_root/read-aloud-mcp/feature.json" <<'JSON'
 {"id":"read-aloud-mcp","title":"Read Aloud MCP","description":"Read Aloud MCP plugin staging."}
 JSON
+    printf '%s\n' '# Read Aloud MCP' > "$features_root/read-aloud-mcp/README.md"
     cat > "$features_root/remote-mobile-control/feature.json" <<'JSON'
 {"id":"remote-mobile-control","title":"Experimental Remote Mobile Control","description":"Mobile host enrollment patches."}
 JSON
+    printf '%s\n' '# Remote Mobile Control' > "$features_root/remote-mobile-control/README.md"
 }
 
 make_fake_browser_upstream_app() {
@@ -300,8 +305,10 @@ test_update_builder_preserves_enabled_linux_features_config() {
     printf '%s\n' '{"enabled":[]}' > "$features_root/features.example.json"
     printf '%s\n' '{"id":"example-feature","title":"Example Linux Feature"}' \
         > "$features_root/example-feature/feature.json"
+    printf '%s\n' '# Example Linux Feature' > "$features_root/example-feature/README.md"
     printf '%s\n' '{"id":"local-tool","title":"Local Tool"}' \
         > "$features_root/local/local-tool/feature.json"
+    printf '%s\n' '# Local Tool' > "$features_root/local/local-tool/README.md"
     cat > "$feature_config" <<'JSON'
 {
   "enabled": [
@@ -378,6 +385,7 @@ test_linux_feature_package_hook_discovery_failure_blocks_build() {
   ]
 }
 JSON
+    printf '%s\n' '# Bad Package Hook' > "$features_root/bad-package-hook/README.md"
     printf '%s\n' '{"enabled":["bad-package-hook"]}' > "$feature_config"
 
     if (
@@ -1070,6 +1078,29 @@ test_setup_native_wizard_rejects_invalid_feature_ids() {
     assert_json_enabled_equals "$config" '[]'
 }
 
+test_setup_native_wizard_rejects_features_without_readme() {
+    info "Checking setup-native wizard rejects undocumented Linux features"
+    local workspace="$TMP_DIR/setup-native-missing-readme"
+    local features_root="$workspace/linux-features"
+    local config="$workspace/features.json"
+    local output_log="$workspace/output.log"
+
+    make_wizard_feature_root "$features_root"
+    rm -f "$features_root/read-aloud/README.md"
+    printf '%s\n' '{"enabled":[]}' > "$config"
+
+    if CODEX_BOOTSTRAP_NONINTERACTIVE=1 \
+        CODEX_LINUX_FEATURES_ROOT="$features_root" \
+        CODEX_LINUX_FEATURES_CONFIG="$config" \
+        CODEX_LINUX_FEATURES="read-aloud" \
+            bash "$REPO_DIR/scripts/bootstrap-wizard.sh" >"$output_log" 2>&1; then
+        fail "setup wizard should reject Linux features without README.md"
+    fi
+
+    assert_contains "$output_log" "must include README.md next to feature.json"
+    assert_json_enabled_equals "$config" '[]'
+}
+
 test_setup_native_wizard_rejects_conflicting_feature_ids() {
     info "Checking setup-native wizard conflicting feature validation"
     local workspace="$TMP_DIR/setup-native-conflicting-feature"
@@ -1227,6 +1258,7 @@ test_setup_native_wizard_lists_local_features() {
     mkdir -p "$features_root/local/local-tool"
     printf '%s\n' '{"id":"local-tool","title":"Local Tool","description":"User-local integration."}' \
         > "$features_root/local/local-tool/feature.json"
+    printf '%s\n' '# Local Tool' > "$features_root/local/local-tool/README.md"
     printf '%s\n' '{"enabled":[]}' > "$config"
 
     CODEX_BOOTSTRAP_NONINTERACTIVE=1 \
@@ -5170,6 +5202,7 @@ main() {
     test_fedora_dependency_bootstrap_installs_rpmbuild
     test_setup_native_wizard_noninteractive_feature_writer
     test_setup_native_wizard_rejects_invalid_feature_ids
+    test_setup_native_wizard_rejects_features_without_readme
     test_setup_native_wizard_rejects_conflicting_feature_ids
     test_setup_native_wizard_disable_is_non_destructive
     test_setup_native_wizard_accepts_numbered_feature_selection

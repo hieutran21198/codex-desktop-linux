@@ -163,6 +163,10 @@ function normalizeLinuxFeatureManifest(featuresRoot, candidate) {
   }
 
   const id = assertFeatureId(manifest.id, `Linux feature id in ${candidate.manifestPath}`);
+  const readmePath = path.join(candidate.dir, "README.md");
+  if (!fs.existsSync(readmePath) || isDirectory(readmePath)) {
+    throw new Error(`Linux feature '${id}' must include README.md next to feature.json`);
+  }
   if (manifest.defaultEnabled === true) {
     throw new Error(`Linux feature '${id}' must be disabled by default; defaultEnabled true is not allowed`);
   }
@@ -172,6 +176,7 @@ function normalizeLinuxFeatureManifest(featuresRoot, candidate) {
     id,
     dir: candidate.dir,
     manifestPath: candidate.manifestPath,
+    readmePath,
     origin: candidate.origin,
     local: candidate.origin === "local",
     relativeDir,

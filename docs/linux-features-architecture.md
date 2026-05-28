@@ -13,7 +13,10 @@ User-local features live under `linux-features/local/<feature-id>/`. The
 or experimental integrations in the checkout without accidentally committing
 them.
 
-Every feature needs a `feature.json` manifest:
+Every feature needs a `feature.json` manifest and a neighboring `README.md`.
+The README is required for both repository features and git-ignored local
+features, and should describe what the feature does, how to test it, and known
+support risks.
 
 ```json
 {

@@ -771,6 +771,8 @@ def discover_features(root):
         if not isinstance(feature_id, str) or not id_re.match(feature_id):
             warn(f"Skipping feature with invalid id in {manifest_path}")
             continue
+        if not (manifest_path.parent / "README.md").is_file():
+            die(f"Linux feature '{feature_id}' must include README.md next to feature.json")
         if data.get("defaultEnabled") is True:
             die(f"Linux feature '{feature_id}' must be disabled by default; defaultEnabled true is not allowed")
         if feature_id in features:
