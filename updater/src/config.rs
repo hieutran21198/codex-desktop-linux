@@ -209,6 +209,56 @@ pub fn settings_wrapper_updates_override() -> Option<bool> {
     settings_bool_override(WRAPPER_UPDATES_SETTING_KEY)
 }
 
+const FEATURE_CONFIG_FILE: &str = "linux-features.json";
+const FEATURE_PICKER_ON_UPDATE_SETTING_KEY: &str = "codex-linux-feature-picker-on-update";
+
+/// Resolves the stable per-user feature-config path
+/// (`<config>/<appId>/linux-features.json`), alongside `settings.json`. The
+/// wrapper-update feature picker writes the chosen `{"enabled":[...]}` here, and
+/// the rebuild points `CODEX_LINUX_FEATURES_CONFIG` at it. Deliberately outside
+/// any wrapper-src checkout so a fresh clone cannot clobber it.
+pub fn feature_config_path() -> Option<PathBuf> {
+    let settings = app_settings_path()?;
+    let dir = settings.parent()?;
+    Some(dir.join(FEATURE_CONFIG_FILE))
+}
+
+/// Reads the user's "ask which features to enable on update" preference (the
+/// in-app Update-button feature picker). Absent ⇒ `None` ⇒ caller defaults to
+/// asking.
+pub fn settings_feature_picker_on_update_override() -> Option<bool> {
+    settings_bool_override(FEATURE_PICKER_ON_UPDATE_SETTING_KEY)
+}
+
+/// Persists the "Ask which features to enable on update" preference to the app
+/// `settings.json`, merging into the existing object (preserving every other
+/// key). Used to honor the picker's "Don't ask again" row. Never panics; returns
+/// the IO/serialization error so the caller can log-and-continue.
+pub fn write_feature_picker_on_update(value: bool) -> Result<()> {
+    write_settings_bool(FEATURE_PICKER_ON_UPDATE_SETTING_KEY, value)
+}
+
+/// Read-modify-writes a boolean key into the app `settings.json`, preserving all
+/// other keys. Creates the file (and parent dir) when absent. A malformed
+/// existing file is replaced with a fresh object rather than failing.
+fn write_settings_bool(key: &str, value: bool) -> Result<()> {
+    let path = app_settings_path().context("could not resolve settings.json path")?;
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).with_context(|| format!("Failed to create {}", dir.display()))?;
+    }
+    let mut object = fs::read_to_string(&path)
+        .ok()
+        .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    object.insert(key.to_string(), serde_json::Value::Bool(value));
+    let serialized = serde_json::to_string_pretty(&serde_json::Value::Object(object))
+        .context("Failed to serialize settings.json")?;
+    fs::write(&path, format!("{serialized}\n"))
+        .with_context(|| format!("Failed to write {}", path.display()))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
