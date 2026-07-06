@@ -13,6 +13,7 @@
 | GPU / Vulkan / Wayland errors | Try `CODEX_LINUX_RENDERING_MODE=wayland-gpu ./codex-app/start.sh` or persistent launch flags below |
 | UI massively oversized, tiny, or blurry | See [Oversized or blurry UI](#oversized-or-blurry-ui-hidpi--fractional-scaling); quick fix: `CODEX_FORCE_DEVICE_SCALE_FACTOR=1 ./codex-app/start.sh` |
 | Window flickering, resize ghosting, or stale frame trails | Try `CODEX_ELECTRON_DISABLE_GPU_COMPOSITING=1 ./codex-app/start.sh`, then `./codex-app/start.sh --disable-gpu` if needed |
+| Right-clicking the title bar leaves GNOME/X11 input stuck | Press `Esc` first, or use `Alt+Space` for the window menu. If the lockup is repeatable, test the optional `frameless-titlebar` feature below and include your distro, GNOME version, X11/Wayland session, package method, and `.codex-linux/linux-features-staged.json` when reporting it |
 | Transparent or dark left sidebar | Check whether the Linux opaque-window patch was applied, then rebuild with a current checkout |
 | Sandbox errors | The launcher already sets `--no-sandbox` |
 | Renderer crashes in containers with a tiny `/dev/shm` | The launcher keeps `--disable-dev-shm-usage` automatically when `/dev/shm` is missing or below 1 GiB; force it with `CODEX_ELECTRON_DISABLE_DEV_SHM_USAGE=1` |
@@ -126,6 +127,49 @@ Ubuntu GNOME notes:
   app on native Wayland.
 - "Large Text" (accessibility) only sets `text-scaling-factor` and affects
   fonts, not the window scale; `--diagnose-scaling` shows both values.
+
+## GNOME/X11 Title Bar Right-click Lockups
+
+On some GNOME/X11 setups, right-clicking the Codex title bar can leave the
+desktop input focused on the window-manager menu. Try `Esc` first. `Alt+Space`
+opens the same window menu through the keyboard path and can be a safer
+workaround while debugging.
+
+If the issue is repeatable, verify whether the installed app is using optional
+Linux features:
+
+```bash
+if [ -f /opt/codex-desktop/.codex-linux/linux-features-staged.json ]; then
+  cat /opt/codex-desktop/.codex-linux/linux-features-staged.json
+else
+  echo "No staged Linux feature manifest found for this install"
+fi
+```
+
+Then test the disabled-by-default `frameless-titlebar` feature in a local
+checkout:
+
+```bash
+cp linux-features/features.example.json linux-features/features.json
+python3 - <<'PY'
+import json
+from pathlib import Path
+
+path = Path("linux-features/features.json")
+data = json.loads(path.read_text())
+enabled = set(data.get("enabled", []))
+enabled.add("frameless-titlebar")
+data["enabled"] = sorted(enabled)
+path.write_text(json.dumps(data, indent=2) + "\n")
+PY
+make install-native
+```
+
+When opening an issue, include the distro/version, GNOME Shell version,
+`XDG_SESSION_TYPE`, package method, Codex Desktop build information, and whether
+the lockup happens with `frameless-titlebar` enabled. This path changes the
+window controls contract, so it is kept opt-in rather than enabled for all
+Linux users.
 
 ## Authenticated HTTP Proxies
 
