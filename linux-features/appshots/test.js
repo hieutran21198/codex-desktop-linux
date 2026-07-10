@@ -242,7 +242,7 @@ test("routes AppShots capture through the self-contained Linux feature", () => {
   assert.match(patched, /codexLinuxAppshotCropWithImageMagick/);
   assert.ok(
     patched.indexOf("await codexLinuxAppshotCropWithImageMagick") <
-      patched.indexOf("codexLinuxAppshotCropNativeImage(o,u,s)"),
+      patched.indexOf("codexLinuxAppshotCropNativeImage(o,d,s)"),
   );
   assert.match(patched, /\[linux-appshots\]/);
   assert.match(patched, /codexLinuxAppshotCropRects/);
