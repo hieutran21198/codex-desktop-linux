@@ -101,8 +101,6 @@ test("remote-control UI feature patches are idempotent and fail soft", () => {
     "function d(){let e=(0,u.c)(3),{data:i}=n(s,r(t)),a=c(`4114442250`);if(i?.config[`features.remote_connections`]===!0)return!0;let o=i?.config.features;if(typeof o!=`object`||!o||Array.isArray(o))return a;let l;return e[0]!==o||e[1]!==a?(l=Object.getOwnPropertyDescriptor(o,`remote_connections`)?.value===!0||a,e[0]=o,e[1]=a,e[2]=l):l=e[2],l}";
   const currentRemoteControlConnectionsSource =
     "function a({remoteControlConnectionsState:e,slingshotEnabled:t}){return t&&(e?.available??!0)&&e?.accessRequired!==!0}";
-  const legacyRemoteControlConnectionsSource =
-    "function p(flag,state){return!!flag&&state?.available===!0}";
   const experimentalFeaturesSource =
     "var Z=`remote_control`;function Ie(e){return e.stage===`beta`?e.name!==`memories`&&e.name!==`multi_agent`&&e.name!==`plugins`&&e.name!==`plugin`&&e.name!==`remote_control`&&!e.name.startsWith(`realtime_`)&&e.name!==`chronicle`&&e.name!==`workspace_dependencies`:!1}";
 
@@ -126,16 +124,6 @@ test("remote-control UI feature patches are idempotent and fail soft", () => {
   assert.equal(remoteControlPatchedAgain, currentRemoteControlConnectionsPatched);
   assert.deepEqual(remoteControlPatchedAgainWarnings, []);
 
-  const legacyRemoteControlConnectionsPatched = remoteControlConnectionsPatch.apply(
-    legacyRemoteControlConnectionsSource,
-    {},
-  );
-  const legacyGate = new Function(
-    "flag",
-    "state",
-    "navigator",
-    `${legacyRemoteControlConnectionsPatched};return p(flag,state)`,
-  );
   const currentGate = new Function(
     "remoteControlConnectionsState",
     "slingshotEnabled",
@@ -143,11 +131,6 @@ test("remote-control UI feature patches are idempotent and fail soft", () => {
     `${currentRemoteControlConnectionsPatched};return a({remoteControlConnectionsState,slingshotEnabled})`,
   );
   const linuxNavigator = { userAgent: "Linux" };
-  const macNavigator = { userAgent: "Macintosh" };
-
-  assert.equal(legacyGate(false, { available: false }, linuxNavigator), false);
-  assert.equal(legacyGate(false, { available: true }, linuxNavigator), true);
-  assert.equal(legacyGate(false, { available: true }, macNavigator), false);
   assert.equal(currentGate({ available: false, accessRequired: false }, false, linuxNavigator), false);
   assert.equal(currentGate({ available: true, accessRequired: true }, false, linuxNavigator), false);
   assert.equal(currentGate({ available: true, accessRequired: false }, false, linuxNavigator), true);

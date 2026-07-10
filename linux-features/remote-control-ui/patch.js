@@ -6,17 +6,6 @@ function warn(message, patchName) {
   console.warn(`WARN: ${message} — skipping ${patchName}`);
 }
 
-function replaceOnce(source, needle, replacement, patchName) {
-  if (source.includes(replacement)) {
-    return source;
-  }
-  if (!source.includes(needle)) {
-    warn("Could not find expected needle", patchName);
-    return source;
-  }
-  return source.replace(needle, replacement);
-}
-
 function applyRemoteConnectionsVisibilityPatch(source) {
   let patched = source.replace(
     /([A-Za-z_$][\w$]*)\(`4114442250`\)(?!\|\|navigator\.userAgent\.includes\(`Linux`\))/g,
@@ -34,26 +23,14 @@ function applyRemoteConnectionsVisibilityPatch(source) {
 }
 
 function applyRemoteControlConnectionsVisibilityPatch(source) {
-  let patched = source.replace(
-    /return!!([A-Za-z_$][\w$]*)&&([A-Za-z_$][\w$]*)\?\.available===!0(?!\|\|navigator\.userAgent\.includes\(`Linux`\))/g,
-    `return(!!$1||${LINUX_GATE})&&$2?.available===!0`,
-  );
-  patched = patched.replace(
+  const patched = source.replace(
     /return\s+([A-Za-z_$][\w$]*)&&\(([A-Za-z_$][\w$]*)\?\.available\?\?!0\)&&\2\?\.accessRequired!==!0(?!&&navigator\.userAgent\.includes\(`Linux`\))/g,
     `return ($1||${LINUX_GATE})&&($2?.available??!0)&&$2?.accessRequired!==!0`,
   );
   const alreadyPatched =
-    /return\(!![A-Za-z_$][\w$]*\|\|navigator\.userAgent\.includes\(`Linux`\)\)&&[A-Za-z_$][\w$]*\?\.available===!0/.test(source) ||
     /return \([A-Za-z_$][\w$]*\|\|navigator\.userAgent\.includes\(`Linux`\)\)&&\([A-Za-z_$][\w$]*\?\.available\?\?!0\)&&[A-Za-z_$][\w$]*\?\.accessRequired!==!0/.test(source);
   if (patched !== source || alreadyPatched) {
     return patched;
-  }
-  if (
-    source.includes("function p(){let") &&
-    source.includes("remote_control_connections") &&
-    source.includes("addedRemoteControlEnvIds")
-  ) {
-    return source;
   }
   warn(
     "Could not find remote control connections visibility gate",
@@ -67,10 +44,7 @@ function applyExperimentalFeaturesPatch(source) {
   if (source.includes(needle)) {
     return source.replace(needle, "");
   }
-  if (
-    source.includes("e.name!==`realtime_conversation`&&e.name!==`chronicle`") ||
-    source.includes("!e.name.startsWith(`realtime_`)&&e.name!==`chronicle`")
-  ) {
+  if (source.includes("!e.name.startsWith(`realtime_`)&&e.name!==`chronicle`")) {
     return source;
   }
   if (source.includes("remote_control")) {
