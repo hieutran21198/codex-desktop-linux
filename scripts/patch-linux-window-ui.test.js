@@ -51,6 +51,7 @@ const {
 const {
   applyBrowserUseNodeReplApprovalPatch,
   applyBrowserUseNodeReplApprovalAssets,
+  applyLinuxBundledPluginReconcileStaleSnapshotPatch,
   applyLinuxBrowserUseRouteLivenessPatch,
   applyLinuxChromeExtensionStatusPatch,
   applyLinuxExternalOpenEnvPatch,
@@ -1020,6 +1021,7 @@ test("default core patch descriptors are grouped and unique", () => {
     "linux-chrome-plugin-auto-install",
     "linux-chrome-native-host-runtime",
     "browser-use-node-repl-approval",
+    "linux-bundled-plugin-reconcile-stale-snapshot",
     "linux-browser-use-route-liveness",
     "linux-chrome-extension-status",
     "linux-local-app-server-feature-enablement-handler",
@@ -1081,6 +1083,12 @@ test("default core patch descriptors are grouped and unique", () => {
   );
   assert.equal(
     descriptors.find((descriptor) => descriptor.id === "local-environment-action-modal-draft")?.ciPolicy,
+    "optional",
+  );
+  assert.equal(
+    descriptors.find(
+      (descriptor) => descriptor.id === "linux-bundled-plugin-reconcile-stale-snapshot",
+    )?.ciPolicy,
     "optional",
   );
   assert.equal(
@@ -6284,6 +6292,141 @@ test("auto-installs the current Chrome plugin gate shape", () => {
   assert.match(patched, /name:o\.s,syncInstallStateWithChromeExtension:!0,isAvailable:\(\{buildFlavor:e,env:t,features:r\}\)=>Ar\(e,t\)&&r\.externalBrowserUseAllowed/);
   assert.equal((patched.match(/installWhenMissing:!0,name:o\.c/g) || []).length, 1);
   assert.equal((patched.match(/installWhenMissing:!0,name:o\.s/g) || []).length, 0);
+});
+
+function bundledPluginReconcileRaceFixture({
+  capturedHashVar = "c",
+  capturedSnapshotVar = "n",
+  featureStateVar = "p",
+  forceVar = "e",
+  latestHashVar = "h",
+  pendingVar = "v",
+  reasonVar = "t",
+  workerArgVar = "t",
+  workerVar = "j",
+} = {}) {
+  return [
+    `let ${featureStateVar}=null,${pendingVar}=Promise.resolve(),${latestHashVar}=null,calls=[],releasePreflight,preflightCount=0,markPreflightStarted;`,
+    "let preflightStarted=new Promise(e=>{markPreflightStarted=e});",
+    "let L=()=>({info(){}});",
+    "let preflight=()=>++preflightCount===1?(markPreflightStarted(),new Promise(e=>{releasePreflight=e})):Promise.resolve();",
+    "let destructive=async({appServerConnection:e,desktopFeatureAvailability:t})=>{calls.push(t);return {}};",
+    `let E=({force:${forceVar},reason:${reasonVar}})=>{if(${featureStateVar}==null)return L().info(\`bundled_plugins_reconcile_skipped_features_unavailable\`,{safe:{reason:${reasonVar}},sensitive:{}}),${pendingVar};let ${capturedSnapshotVar}=${featureStateVar},${capturedHashVar}=JSON.stringify({externalBrowserUse:${capturedSnapshotVar}.externalBrowserUse,inAppBrowserUse:${capturedSnapshotVar}.inAppBrowserUse});if(!${forceVar}&&${latestHashVar}===${capturedHashVar})return ${pendingVar};${latestHashVar}=${capturedHashVar};return ${pendingVar}=${pendingVar}.catch(()=>{}).then(async()=>{L().info(\`bundled_plugins_reconcile_started\`,{safe:{reason:${reasonVar}},sensitive:{}});await ${workerVar}({desktopFeatureAvailability:${capturedSnapshotVar},reason:${reasonVar}})}),${pendingVar}};`,
+    `let ${workerVar}=async ${workerArgVar}=>{await preflight();let v=async()=>{},y,h=\`shadowed-worker-local\`;try{y=await destructive({appServerConnection:null,desktopFeatureAvailability:${workerArgVar}.desktopFeatureAvailability})}finally{await v()}};`,
+    `function setFeatures(e){${featureStateVar}=e;return E({force:!1,reason:\`startup\`})}`,
+    "function getCalls(){return calls}",
+    "function release(){releasePreflight()}",
+    "function waitForPreflight(){return preflightStarted}",
+  ].join("");
+}
+
+function bundledPluginReconcileRaceApi(source) {
+  const patched = applyPatchTwice(
+    applyLinuxBundledPluginReconcileStaleSnapshotPatch,
+    source,
+  );
+  return {
+    api: new Function(
+      `${patched};return {setFeatures,getCalls,release,waitForPreflight};`,
+    )(),
+    patched,
+  };
+}
+
+test("skips a queued bundled plugin reconcile that captured a stale feature snapshot", async () => {
+  const { api, patched } = bundledPluginReconcileRaceApi(
+    bundledPluginReconcileRaceFixture(),
+  );
+
+  api.setFeatures({ externalBrowserUse: false, inAppBrowserUse: false });
+  await api.waitForPreflight();
+  const latestReconcile = api.setFeatures({
+    externalBrowserUse: true,
+    inAppBrowserUse: true,
+  });
+  api.release();
+  await latestReconcile;
+
+  assert.deepEqual(api.getCalls(), [
+    { externalBrowserUse: true, inAppBrowserUse: true },
+  ]);
+  assert.equal(
+    (patched.match(/codex-linux-skip-stale-bundled-plugin-reconcile/g) || []).length,
+    1,
+  );
+});
+
+test("reconciles an authoritative disabled bundled plugin snapshot", async () => {
+  const { api } = bundledPluginReconcileRaceApi(
+    bundledPluginReconcileRaceFixture(),
+  );
+
+  const reconcile = api.setFeatures({
+    externalBrowserUse: false,
+    inAppBrowserUse: false,
+  });
+  await api.waitForPreflight();
+  api.release();
+  await reconcile;
+
+  assert.deepEqual(api.getCalls(), [
+    { externalBrowserUse: false, inAppBrowserUse: false },
+  ]);
+});
+
+test("escapes dollar-prefixed bundled plugin reconcile identifiers", async () => {
+  const { api, patched } = bundledPluginReconcileRaceApi(
+    bundledPluginReconcileRaceFixture({
+      capturedHashVar: "$c",
+      capturedSnapshotVar: "$n",
+      featureStateVar: "$p",
+      forceVar: "$force",
+      latestHashVar: "$h",
+      pendingVar: "$v",
+      reasonVar: "$reason",
+      workerArgVar: "$t",
+      workerVar: "$j",
+    }),
+  );
+
+  api.setFeatures({ externalBrowserUse: false, inAppBrowserUse: false });
+  await api.waitForPreflight();
+  const latestReconcile = api.setFeatures({
+    externalBrowserUse: true,
+    inAppBrowserUse: true,
+  });
+  api.release();
+  await latestReconcile;
+
+  assert.deepEqual(api.getCalls(), [
+    { externalBrowserUse: true, inAppBrowserUse: true },
+  ]);
+  assert.equal(
+    (patched.match(/codex-linux-skip-stale-bundled-plugin-reconcile/g) || []).length,
+    1,
+  );
+});
+
+test("fails closed when the bundled plugin reconcile worker is ambiguous", () => {
+  const source =
+    bundledPluginReconcileRaceFixture() +
+    "j=async q=>{let y;try{y=await destructive({appServerConnection:null})}finally{}};";
+  const { value, warnings } = captureWarns(() =>
+    applyLinuxBundledPluginReconcileStaleSnapshotPatch(source),
+  );
+  assert.equal(value, source);
+  assert.match(warnings[0], /Expected one bundled plugin reconcile worker definition/);
+});
+
+test("fails closed when bundled plugin reconcile insertion order drifts", () => {
+  const source = bundledPluginReconcileRaceFixture()
+    .replace("h=c;return v=", "return v=")
+    .replace("let j=async", "h=c;let j=async");
+  const { value, warnings } = captureWarns(() =>
+    applyLinuxBundledPluginReconcileStaleSnapshotPatch(source),
+  );
+  assert.equal(value, source);
+  assert.match(warnings[0], /insertion order drifted/);
 });
 
 test("uses Linux managed runtime paths for Chrome native host sync", () => {
