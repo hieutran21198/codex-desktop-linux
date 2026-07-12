@@ -20,8 +20,6 @@ const REMOTE_CONTROL_VISIBILITY_NEEDLE =
   "function a({remoteControlConnectionsState:e,slingshotEnabled:t}){return t&&(e?.available??!0)&&e?.accessRequired!==!0}";
 const REMOTE_CONTROL_VISIBILITY_REPLACEMENT =
   "function a({remoteControlConnectionsState:e,slingshotEnabled:t}){let n=typeof navigator!=`undefined`&&navigator.userAgent.includes(`Linux`);return(n||t)&&(n||(e?.available??!0))&&e?.accessRequired!==!0}";
-const REMOTE_CONTROL_VISIBILITY_OLD_REPLACEMENT =
-  "function a({remoteControlConnectionsState:e,slingshotEnabled:t}){let n=typeof navigator!=`undefined`&&navigator.userAgent.includes(`Linux`);return t&&(n||(e?.available??!0))&&e?.accessRequired!==!0}";
 const REMOTE_CONTROL_SETTINGS_VISIBILITY_NEEDLE =
   /function ([A-Za-z_$][\w$]*)\(\{remoteControlConnectionsState:([A-Za-z_$][\w$]*),slingshotEnabled:([A-Za-z_$][\w$]*)\}\)\{return \3&&\(\2\?\.available\?\?!0\)(?:&&\2\?\.accessRequired!==!0)?\}/u;
 const REMOTE_CONTROL_SETTINGS_UX_MARKER = "codexLinuxRemoteControlSettingsTabs";
@@ -57,6 +55,12 @@ const REMOTE_MOBILE_APP_SERVER_ARGS_NEEDLE =
   "[`-c`,`features.code_mode_host=true`,`app-server`,`--analytics-default-enabled`]";
 const REMOTE_MOBILE_CONVERSATION_ASSET_PATTERN =
   /^app-initial~app-main~onboarding-page~hotkey-window-thread-page~quick-chat-window-page~chatg~[^.]+\.js$/u;
+const REMOTE_CONTROL_APP_MAIN_PAGE_ASSET_PATTERN =
+  /^app-initial~app-main~page-[^.]+\.js$/u;
+const REMOTE_CONTROL_VISIBILITY_ASSET_PATTERN =
+  /^app-initial~app-main~appgen-settings-page~plugin-detail-page~new-thread-panel-page~onboardi~[^.]+\.js$/u;
+const REMOTE_MOBILE_ACTIVE_STATUS_ASSET_PATTERN =
+  /^app-initial~app-main~projects-index-page~remote-conversation-page-[^.]+\.js$/u;
 const REMOTE_CONTROL_SELECTED_TAB_NEEDLE =
   "function rr({selectedConnectionsTab:e,showControlThisMacTab:t,showRemoteControlConnectionsSection:n,showTabbedSshPage:r}){return n?e===`control-this-mac`&&!t||e===`ssh`&&!r?`access-other-devices`:e:`ssh`}";
 const REMOTE_CONTROL_SELECTED_TAB_REPLACEMENT =
@@ -601,12 +605,10 @@ function applyLinuxRemoteControlFeatureSyncPatch(source) {
     return source;
   }
 
-  // 26.527.x builds the per-host feature enablement in a helper that copies the
-  // supported defaults, then unconditionally adds remote_plugin (n[vI]=t), and
-  // never includes remote_control. Current app servers support remote_plugin and
-  // use it for remote marketplace data, so Linux only adds remote_control.
-  // Older core Linux patches may already have removed the remote_plugin tail;
-  // compose with that sanitized shape instead of treating it as drift.
+  // The current per-host feature enablement helper copies the supported
+  // defaults, then adds remote_plugin without remote_control. Current app
+  // servers use remote_plugin for remote marketplace data, so Linux adds only
+  // remote_control while preserving the upstream remote_plugin assignment.
   let patched = source;
   let changed = false;
   const enablementRegex =
@@ -622,19 +624,6 @@ function applyLinuxRemoteControlFeatureSyncPatch(source) {
         `function ${REMOTE_CONTROL_FEATURE_SYNC_MARKER}(e,t){return e==null||t==null||e===t}`;
       patched = patched.replace(enablementRegex, replacement);
       changed = true;
-    } else {
-      const sanitizedEnablementRegex =
-        /(for\(let ([A-Za-z_$][\w$]*) of [A-Za-z_$][\w$]*\)\{let ([A-Za-z_$][\w$]*)=[A-Za-z_$][\w$]*\[\2\];\3!=null&&\(([A-Za-z_$][\w$]*)\[\2\]=\3\)\})return \4\}/u;
-      const sanitizedMatch = patched.match(sanitizedEnablementRegex);
-      if (sanitizedMatch != null) {
-        const [, loopBlock, , , enablementVar] = sanitizedMatch;
-        const replacement =
-          `${loopBlock}return typeof navigator!=\`undefined\`&&navigator.userAgent.includes(\`Linux\`)` +
-          `?(${REMOTE_CONTROL_FEATURE_SYNC_MARKER}(arguments[2],arguments[3])&&(${enablementVar}.remote_control=!0),${enablementVar})` +
-          `:${enablementVar}}function ${REMOTE_CONTROL_FEATURE_SYNC_MARKER}(e,t){return e==null||t==null||e===t}`;
-        patched = patched.replace(sanitizedEnablementRegex, replacement);
-        changed = true;
-      }
     }
   }
 
@@ -705,9 +694,6 @@ function applyLinuxRemoteControlVisibilityPatch(source) {
       source.includes("navigator.userAgent.includes(`Linux`)")
   ) {
     return source;
-  }
-  if (source.includes(REMOTE_CONTROL_VISIBILITY_OLD_REPLACEMENT)) {
-    return source.replace(REMOTE_CONTROL_VISIBILITY_OLD_REPLACEMENT, REMOTE_CONTROL_VISIBILITY_REPLACEMENT);
   }
   if (!source.includes(REMOTE_CONTROL_VISIBILITY_NEEDLE)) {
     if (!source.includes("remoteControlConnectionsState")) {
@@ -1543,11 +1529,20 @@ function applyLinuxRemoteControlEnablementBridgePatch(source) {
   patched = applyLinuxRemoteControlEnableForHostParamsPatch(patched);
 
   const markerIndex = patched.indexOf("[remote-connections/slingshot-gate-bridge]");
-  if (markerIndex < 0 || patched.indexOf("set-remote-control-connections-enabled", markerIndex) < 0) {
+  const enablementIndex = patched.indexOf("set-remote-control-connections-enabled");
+  if (markerIndex < 0 || enablementIndex < 0) {
+    return patched;
+  }
+  if (Math.abs(markerIndex - enablementIndex) > 4_500) {
+    console.warn("WARN: Remote-control enablement bridge anchors are too far apart - skipping Linux remote-control bridge patch");
     return patched;
   }
 
-  let region = patched.slice(markerIndex, markerIndex + 4_500);
+  const regionStart = Math.max(0, Math.min(markerIndex, enablementIndex) - 1_000);
+  const regionEnd = Math.min(patched.length, Math.max(markerIndex, enablementIndex) + 4_500);
+  const prefix = patched.slice(0, regionStart);
+  const suffix = patched.slice(regionEnd);
+  let region = patched.slice(regionStart, regionEnd);
 
   if (!patched.includes(REMOTE_CONTROL_ENABLEMENT_BRIDGE_MARKER)) {
     const currentBridgePattern =
@@ -1557,55 +1552,35 @@ function applyLinuxRemoteControlEnablementBridgePatch(source) {
       (_needle, functionName, cacheVar, compilerVar, checkGateVar, isLoadingVar, gateHookVar, gateValueVar, enabledVar, callbackVar, depsVar) =>
         `function ${functionName}(){let ${cacheVar}=(0,${compilerVar}.c)(6),{checkGate:${checkGateVar},isLoading:${isLoadingVar}}=${gateHookVar}(),${gateValueVar};${cacheVar}[0]===${checkGateVar}?${gateValueVar}=${cacheVar}[1]:(${gateValueVar}=${checkGateVar}(\`1042620455\`),${cacheVar}[0]=${checkGateVar},${cacheVar}[1]=${gateValueVar});let ${enabledVar}=${gateValueVar}||/*${REMOTE_CONTROL_ENABLEMENT_BRIDGE_MARKER}*/typeof navigator!=\`undefined\`&&navigator.userAgent.includes(\`Linux\`),${callbackVar},${depsVar};return `,
     );
-    const bridgePattern =
-      /function ([A-Za-z_$][\w$]*)\(\)\{let ([A-Za-z_$][\w$]*)=\(0,([A-Za-z_$][\w$]*)\.c\)\(3\),([A-Za-z_$][\w$]*)=([A-Za-z_$][\w$]*)\(\),([A-Za-z_$][\w$]*),([A-Za-z_$][\w$]*);return \2\[0\]===\4\?/u;
-    if (patchedRegion === region) {
-      patchedRegion = region.replace(
-        bridgePattern,
-        (_needle, functionName, cacheVar, compilerVar, enabledVar, gateVar, callbackVar, depsVar) =>
-          `function ${functionName}(){let ${cacheVar}=(0,${compilerVar}.c)(3),${enabledVar}=${gateVar}()||/*${REMOTE_CONTROL_ENABLEMENT_BRIDGE_MARKER}*/typeof navigator!=\`undefined\`&&navigator.userAgent.includes(\`Linux\`),${callbackVar},${depsVar};return ${cacheVar}[0]===${enabledVar}?`,
-      );
-    }
-
     if (patchedRegion === region) {
       console.warn("WARN: Could not find remote-control enablement bridge needle - skipping Linux remote-control bridge patch");
       return patched;
     }
 
-    patched = patched.slice(0, markerIndex) + patchedRegion + patched.slice(markerIndex + region.length);
-    region = patched.slice(markerIndex, markerIndex + 4_500);
+    region = patchedRegion;
   }
 
-  if (patched.includes(REMOTE_CONTROL_SELF_AUTO_CONNECT_MARKER)) {
-    return patched;
+  if (region.includes(REMOTE_CONTROL_SELF_AUTO_CONNECT_MARKER)) {
+    return prefix + region + suffix;
   }
 
   const selfAutoConnectReplacement = (desktopHostRequestFn, enabledVar, errorVar, loggerVar, logPrefixVar) =>
     `${desktopHostRequestFn}(\`set-remote-control-connections-enabled\`,{params:{enabled:${enabledVar}}}).then(async e=>{if(${enabledVar}&&typeof navigator!=\`undefined\`&&navigator.userAgent.includes(\`Linux\`)){let t=e?.remoteControlConnections??e?.sharedObjects?.remote_control_connections??e?.connections??[],n=e?.sharedObjects?.local_remote_control_installation_id??e?.local_remote_control_installation_id??e?.localRemoteControlInstallationId??e?.installationId??e?.installation_id??null;if(t.length===0)try{let e=await ${desktopHostRequestFn}(\`refresh-remote-control-connections\`,{params:{}});t=e?.remoteControlConnections??e?.sharedObjects?.remote_control_connections??e?.connections??[],n=n??e?.sharedObjects?.local_remote_control_installation_id??e?.local_remote_control_installation_id??e?.localRemoteControlInstallationId??e?.installationId??e?.installation_id??null}catch(e){${loggerVar}.warning(\`\${${logPrefixVar}} self_auto_connect_refresh_failed\`,{safe:{},sensitive:{error:e}})}if(n==null)try{let e=await ${desktopHostRequestFn}(\`get-global-state\`,{params:{key:\`electron-local-remote-control-installation-id\`}});n=e?.value??e?.state?.value??e?.globalState?.[\`electron-local-remote-control-installation-id\`]??null}catch(e){${loggerVar}.warning(\`\${${logPrefixVar}} self_auto_connect_identity_failed\`,{safe:{},sensitive:{error:e}})}let r=t.filter(e=>typeof e?.hostId==\`string\`&&e.hostId.startsWith(\`remote-control:\`)),i=new Set(r.filter(e=>n!=null&&(e.installationId??e.installation_id)===n).map(e=>e.hostId));await Promise.all(r.map(e=>${desktopHostRequestFn}(\`set-remote-connection-auto-connect\`,{params:{hostId:e.hostId,autoConnect:i.has(e.hostId)}}).catch(t=>{${loggerVar}.warning(\`\${${logPrefixVar}} self_auto_connect_failed\`,{safe:{hostId:e.hostId,autoConnect:i.has(e.hostId)},sensitive:{error:t}})})))}}/*${REMOTE_CONTROL_SELF_AUTO_CONNECT_MARKER}*/).catch(${errorVar}=>{${loggerVar}.warning(\`\${${logPrefixVar}} sync_failed\`,{safe:{enabled:${enabledVar}},sensitive:{error:${errorVar}}})})`;
 
-  const previousAutoConnectCleanupPattern =
-    /([A-Za-z_$][\w$]*)\(`set-remote-control-connections-enabled`,\{params:\{enabled:([A-Za-z_$][\w$]*)\}\}\)\.then\(async ([A-Za-z_$][\w$]*)=>\{[\s\S]*?\/\*codexLinuxRemoteControlAutoConnectCleanup\*\/\)\.catch\(([A-Za-z_$][\w$]*)=>\{([A-Za-z_$][\w$]*)\.warning\(`\$\{([A-Za-z_$][\w$]*)\} sync_failed`,\{safe:\{(?:enabled|slingshotEnabled):\2\},sensitive:\{error:\4\}\}\)\}\)/u;
   const selfAutoConnectPattern =
     /([A-Za-z_$][\w$]*)\(`set-remote-control-connections-enabled`,\{params:\{enabled:([A-Za-z_$][\w$]*)\}\}\)\.catch\(([A-Za-z_$][\w$]*)=>\{([A-Za-z_$][\w$]*)\.warning\(`\$\{([A-Za-z_$][\w$]*)\} sync_failed`,\{safe:\{(?:enabled|slingshotEnabled):\2\},sensitive:\{error:\3\}\}\)\}\)/u;
-  let selfAutoConnectRegion = region.replace(
-    previousAutoConnectCleanupPattern,
-    (_needle, desktopHostRequestFn, enabledVar, _resultVar, errorVar, loggerVar, logPrefixVar) =>
+  const selfAutoConnectRegion = region.replace(
+    selfAutoConnectPattern,
+    (_needle, desktopHostRequestFn, enabledVar, errorVar, loggerVar, logPrefixVar) =>
       selfAutoConnectReplacement(desktopHostRequestFn, enabledVar, errorVar, loggerVar, logPrefixVar),
   );
-  if (selfAutoConnectRegion === region) {
-    selfAutoConnectRegion = region.replace(
-      selfAutoConnectPattern,
-      (_needle, desktopHostRequestFn, enabledVar, errorVar, loggerVar, logPrefixVar) =>
-        selfAutoConnectReplacement(desktopHostRequestFn, enabledVar, errorVar, loggerVar, logPrefixVar),
-    );
-  }
 
   if (selfAutoConnectRegion === region) {
     console.warn("WARN: Could not find remote-control self auto-connect needle - skipping Linux remote-control auto-connect patch");
-    return patched;
+    return prefix + region + suffix;
   }
 
-  return patched.slice(0, markerIndex) + selfAutoConnectRegion + patched.slice(markerIndex + region.length);
+  return prefix + selfAutoConnectRegion + suffix;
 }
 
 function applyLinuxRemoteControlEnableForHostParamsPatch(source) {
@@ -1698,7 +1673,7 @@ module.exports = [
   {
     id: "linux-remote-control-feature-sync",
     phase: "webview-asset",
-    pattern: /^(?:app-main|index)-.*\.js$/,
+    pattern: REMOTE_CONTROL_APP_MAIN_PAGE_ASSET_PATTERN,
     order: 20_119,
     ciPolicy: "optional",
     missingDescription: "webview app main bundle",
@@ -1708,7 +1683,7 @@ module.exports = [
   {
     id: "linux-remote-control-visibility",
     phase: "webview-asset",
-    pattern: /^(?:remote-control-connections-visibility|remote-connections-settings|use-plugin-install-flow)-.*\.js$/,
+    pattern: REMOTE_CONTROL_VISIBILITY_ASSET_PATTERN,
     order: 20_120,
     ciPolicy: "optional",
     missingDescription: "remote-control connections visibility bundle",
@@ -1818,7 +1793,7 @@ module.exports = [
   {
     id: "linux-remote-control-enable-for-host-params",
     phase: "webview-asset",
-    pattern: /^(?:app-main|app-initial~app-main~automations-page)-.*\.js$/,
+    pattern: REMOTE_CONTROL_APP_MAIN_PAGE_ASSET_PATTERN,
     order: 20_155,
     ciPolicy: "optional",
     missingDescription: "app main remote-control host toggle bundle",
@@ -1828,7 +1803,7 @@ module.exports = [
   {
     id: "linux-remote-control-enablement-bridge",
     phase: "webview-asset",
-    pattern: /^app-main-.*\.js$/,
+    pattern: REMOTE_CONTROL_APP_MAIN_PAGE_ASSET_PATTERN,
     order: 20_156,
     ciPolicy: "optional",
     missingDescription: "app main bundle",
@@ -1838,7 +1813,7 @@ module.exports = [
   {
     id: "linux-remote-mobile-active-status",
     phase: "webview-asset",
-    pattern: /^(?:app-main|avatar-overlay-realtime-voice-button)-.*\.js$/,
+    pattern: REMOTE_MOBILE_ACTIVE_STATUS_ASSET_PATTERN,
     order: 20_160,
     ciPolicy: "optional",
     missingDescription: "app main bundle",
