@@ -6,17 +6,22 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" ] (system:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+    }:
+    flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" ] (
+      system:
       let
-        rewriteCratesIoDownloadUrl = url:
-          if ! builtins.isString url then
+        rewriteCratesIoDownloadUrl =
+          url:
+          if !builtins.isString url then
             url
           else
             let
-              match = builtins.match
-                "https://crates[.]io/api/v1/crates/([^/]+)/([^/]+)/download"
-                url;
+              match = builtins.match "https://crates[.]io/api/v1/crates/([^/]+)/([^/]+)/download" url;
             in
             if match == null then
               url
@@ -27,8 +32,9 @@
               in
               "https://static.crates.io/crates/${crateName}/${crateName}-${version}.crate";
 
-        rewriteCratesIoFetchurlArgs = lib: args:
-          if ! builtins.isAttrs args then
+        rewriteCratesIoFetchurlArgs =
+          lib: args:
+          if !builtins.isAttrs args then
             args
           else
             args
@@ -47,8 +53,7 @@
           inherit system;
           overlays = [
             (_final: prev: {
-              fetchurl = args:
-                prev.fetchurl (rewriteCratesIoFetchurlArgs prev.lib args);
+              fetchurl = args: prev.fetchurl (rewriteCratesIoFetchurlArgs prev.lib args);
             })
           ];
         };
@@ -57,12 +62,15 @@
         flakeSourceDateEpoch = toString (self.lastModified or 1);
         sourceRoot = pkgs.lib.cleanSourceWith {
           src = ./.;
-          filter = path: type:
+          filter =
+            path: type:
             pkgs.lib.cleanSourceFilter path type
-            && (let
-              pathStr = toString path;
-            in
-              !(pkgs.lib.hasSuffix "/.codex" pathStr || pkgs.lib.hasInfix "/.codex/" pathStr));
+            && (
+              let
+                pathStr = toString path;
+              in
+              !(pkgs.lib.hasSuffix "/.codex" pathStr || pkgs.lib.hasInfix "/.codex/" pathStr)
+            );
         };
         nixLinuxFeatures = import ./nix/linux-features.nix { lib = pkgs.lib; };
         computerUseBuildSource = pkgs.runCommandLocal "codex-computer-use-linux-source" { } ''
@@ -76,17 +84,19 @@
           cp -R ${./computer-use-linux} "$out/computer-use-linux"
           chmod -R u+w "$out"
         '';
-        notificationActionsBuildSource = pkgs.runCommandLocal "codex-notification-actions-linux-source" { } ''
-          mkdir -p "$out"
-          cp ${./Cargo.lock} "$out/Cargo.lock"
-          cat > "$out/Cargo.toml" <<'EOF'
-          [workspace]
-          members = ["notification-actions-linux"]
-          resolver = "2"
-          EOF
-          cp -R ${./notification-actions-linux} "$out/notification-actions-linux"
-          chmod -R u+w "$out"
-        '';
+        notificationActionsBuildSource =
+          pkgs.runCommandLocal "codex-notification-actions-linux-source" { }
+            ''
+              mkdir -p "$out"
+              cp ${./Cargo.lock} "$out/Cargo.lock"
+              cat > "$out/Cargo.toml" <<'EOF'
+              [workspace]
+              members = ["notification-actions-linux"]
+              resolver = "2"
+              EOF
+              cp -R ${./notification-actions-linux} "$out/notification-actions-linux"
+              chmod -R u+w "$out"
+            '';
         nativeModulesBuildSupport = pkgs.runCommandLocal "codex-native-modules-build-support" { } ''
           mkdir -p "$out/scripts/lib"
           cp ${./scripts/lib/native-modules.sh} "$out/scripts/lib/native-modules.sh"
@@ -94,7 +104,7 @@
 
         codexDmg = pkgs.fetchurl {
           url = "https://persistent.oaistatic.com/codex-app-prod/ChatGPT.dmg";
-          hash = "sha256-pmoGRf1N5vTyLnXKh77bFYWutX80V6PfVVCb+NoRCHk=";
+          hash = "sha256-wkPJT43mpR9VMP/h+NDBWIcz2JCsaS40qsoG2VumN8o=";
         };
 
         codexVersion = "26.707.51957";
@@ -109,7 +119,8 @@
               arch = "arm64";
               hash = "sha256-HnAPfz2u95TMRSNeUcEXJmSu1JpOdze4iW3cOYv/TX0=";
             };
-          }.${system} or (throw "codex-desktop-linux Nix package is not supported on ${system}");
+          }
+          .${system} or (throw "codex-desktop-linux Nix package is not supported on ${system}");
 
         electronZip = pkgs.fetchurl {
           url = "https://github.com/electron/electron/releases/download/v${electronVersion}/electron-v${electronVersion}-linux-${electronPlatform.arch}.zip";
@@ -126,22 +137,26 @@
           hash = "sha256-21Yk6276NrZuxvbdBIjO+5ZuSWNoYqq2IJpDNsHKkMQ=";
         };
 
-        browserUseNodeRepl = if system == "x86_64-linux" then pkgs.stdenv.mkDerivation {
-          pname = "codex-browser-use-node-repl";
-          version = "26.426.12240";
-          src = browserUseNodeReplRuntime;
+        browserUseNodeRepl =
+          if system == "x86_64-linux" then
+            pkgs.stdenv.mkDerivation {
+              pname = "codex-browser-use-node-repl";
+              version = "26.426.12240";
+              src = browserUseNodeReplRuntime;
 
-          dontConfigure = true;
-          dontBuild = true;
+              dontConfigure = true;
+              dontBuild = true;
 
-          installPhase = ''
-            runHook preInstall
-            mkdir -p "$out/bin"
-            tar -xJf "$src" -C "$TMPDIR" codex-primary-runtime/dependencies/bin/node_repl
-            install -m 0755 "$TMPDIR/codex-primary-runtime/dependencies/bin/node_repl" "$out/bin/node_repl"
-            runHook postInstall
-          '';
-        } else null;
+              installPhase = ''
+                runHook preInstall
+                mkdir -p "$out/bin"
+                tar -xJf "$src" -C "$TMPDIR" codex-primary-runtime/dependencies/bin/node_repl
+                install -m 0755 "$TMPDIR/codex-primary-runtime/dependencies/bin/node_repl" "$out/bin/node_repl"
+                runHook postInstall
+              '';
+            }
+          else
+            null;
 
         codexComputerUseBinaries = pkgs.rustPlatform.buildRustPackage {
           pname = "codex-computer-use-linux-binaries";
@@ -340,121 +355,130 @@
         ];
 
         electronLibPath = pkgs.lib.makeLibraryPath electronLibs;
-        runtimeLibPath = pkgs.lib.makeLibraryPath (with pkgs; [
-          libxcrypt-legacy
-          stdenv.cc.cc.lib
-          zlib
-        ]);
-        launcherPath = pkgs.lib.makeBinPath (with pkgs; [
-          bash
-          coreutils
-          curl
-          findutils
-          gawk
-          gnugrep
-          gnused
-          nodejs
-          procps
-          python3
-          systemd
-          xdg-utils
-        ]);
-        globalDictationRuntimePath = pkgs.lib.makeBinPath (with pkgs; [
-          xdotool
-          xinput
-          xmodmap
-        ]);
+        runtimeLibPath = pkgs.lib.makeLibraryPath (
+          with pkgs;
+          [
+            libxcrypt-legacy
+            stdenv.cc.cc.lib
+            zlib
+          ]
+        );
+        launcherPath = pkgs.lib.makeBinPath (
+          with pkgs;
+          [
+            bash
+            coreutils
+            curl
+            findutils
+            gawk
+            gnugrep
+            gnused
+            nodejs
+            procps
+            python3
+            systemd
+            xdg-utils
+          ]
+        );
+        globalDictationRuntimePath = pkgs.lib.makeBinPath (
+          with pkgs;
+          [
+            xdotool
+            xinput
+            xmodmap
+          ]
+        );
 
         patchNixInstalledApp = installDir: ''
-          # Patch generated scripts for NixOS systems without /bin/bash.
-          if [ -f "${installDir}/start.sh" ]; then
-            ${pkgs.gnused}/bin/sed -i '1s|^#!/bin/bash$|#!${pkgs.bash}/bin/bash|' "${installDir}/start.sh"
-            if ! grep -q "NixOS Electron library path" "${installDir}/start.sh"; then
-              # shellcheck disable=SC2016
-              ${pkgs.gnused}/bin/sed -i '/^codex_capture_original_ld_library_path$/a\
-# NixOS Electron library path for dlopen()ed GL/EGL libraries.\
-export LD_LIBRARY_PATH="${electronLibPath}:${runtimeLibPath}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"\
-codex_nixos_add_runtime_library_dirs' "${installDir}/start.sh"
-            fi
-            if ! grep -q "codex_nixos_add_runtime_library_dirs()" "${installDir}/start.sh"; then
-              # shellcheck disable=SC2016
-              ${pkgs.gnused}/bin/sed -i '/^set -euo pipefail$/a\
-\
-codex_nixos_add_runtime_library_dirs() {\
-    local cache_home="''${XDG_CACHE_HOME:-''${HOME:-}/.cache}"\
-    local runtime_root="''${CODEX_PRIMARY_RUNTIME_ROOT:-''${CODEX_RUNTIME_ROOT:-$cache_home/codex-runtimes/codex-primary-runtime}}"\
-    local dir\
-\
-    for dir in \\\
-        "$runtime_root/dependencies/python/lib" \\\
-        "$runtime_root/dependencies/python/lib/python3.12/site-packages/pillow.libs" \\\
-        "$runtime_root/dependencies/python/lib/python3.12/site-packages/numpy.libs" \\\
-        "$runtime_root/dependencies/node/node_modules/@img/sharp-libvips-linux-x64/lib" \\\
-        "$runtime_root/dependencies/node/node_modules/@img/sharp-linux-x64/lib" \\\
-        "$runtime_root/dependencies/node/node_modules/@napi-rs/canvas-linux-x64-gnu"; do\
-        if [ -d "$dir" ]; then\
-            LD_LIBRARY_PATH="$dir:''${LD_LIBRARY_PATH:-}"\
-        fi\
-    done\
-\
-    export LD_LIBRARY_PATH\
-}' "${installDir}/start.sh"
-            fi
-            if ! grep -q "Browser Use bundled marketplace metadata" "${installDir}/start.sh"; then
-              ${pkgs.python3}/bin/python3 - "${installDir}/start.sh" <<'PY'
-from pathlib import Path
-import sys
+                    # Patch generated scripts for NixOS systems without /bin/bash.
+                    if [ -f "${installDir}/start.sh" ]; then
+                      ${pkgs.gnused}/bin/sed -i '1s|^#!/bin/bash$|#!${pkgs.bash}/bin/bash|' "${installDir}/start.sh"
+                      if ! grep -q "NixOS Electron library path" "${installDir}/start.sh"; then
+                        # shellcheck disable=SC2016
+                        ${pkgs.gnused}/bin/sed -i '/^codex_capture_original_ld_library_path$/a\
+          # NixOS Electron library path for dlopen()ed GL/EGL libraries.\
+          export LD_LIBRARY_PATH="${electronLibPath}:${runtimeLibPath}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"\
+          codex_nixos_add_runtime_library_dirs' "${installDir}/start.sh"
+                      fi
+                      if ! grep -q "codex_nixos_add_runtime_library_dirs()" "${installDir}/start.sh"; then
+                        # shellcheck disable=SC2016
+                        ${pkgs.gnused}/bin/sed -i '/^set -euo pipefail$/a\
+          \
+          codex_nixos_add_runtime_library_dirs() {\
+              local cache_home="''${XDG_CACHE_HOME:-''${HOME:-}/.cache}"\
+              local runtime_root="''${CODEX_PRIMARY_RUNTIME_ROOT:-''${CODEX_RUNTIME_ROOT:-$cache_home/codex-runtimes/codex-primary-runtime}}"\
+              local dir\
+          \
+              for dir in \\\
+                  "$runtime_root/dependencies/python/lib" \\\
+                  "$runtime_root/dependencies/python/lib/python3.12/site-packages/pillow.libs" \\\
+                  "$runtime_root/dependencies/python/lib/python3.12/site-packages/numpy.libs" \\\
+                  "$runtime_root/dependencies/node/node_modules/@img/sharp-libvips-linux-x64/lib" \\\
+                  "$runtime_root/dependencies/node/node_modules/@img/sharp-linux-x64/lib" \\\
+                  "$runtime_root/dependencies/node/node_modules/@napi-rs/canvas-linux-x64-gnu"; do\
+                  if [ -d "$dir" ]; then\
+                      LD_LIBRARY_PATH="$dir:''${LD_LIBRARY_PATH:-}"\
+                  fi\
+              done\
+          \
+              export LD_LIBRARY_PATH\
+          }' "${installDir}/start.sh"
+                      fi
+                      if ! grep -q "Browser Use bundled marketplace metadata" "${installDir}/start.sh"; then
+                        ${pkgs.python3}/bin/python3 - "${installDir}/start.sh" <<'PY'
+          from pathlib import Path
+          import sys
 
-path = Path(sys.argv[1])
-text = path.read_text()
-needle = '    [ -f "$source_client" ] || return 0\n\n'
-insert = "\n".join([
-    "    # Browser Use bundled marketplace metadata for app-server plugin discovery.",
-    "    local source_marketplace=\"$SCRIPT_DIR/resources/plugins/openai-bundled/.agents/plugins/marketplace.json\"",
-    "    local marketplace_root=\"$codex_home/.tmp/bundled-marketplaces/openai-bundled\"",
-    "    local marketplace_plugins_dir=\"$marketplace_root/.agents/plugins\"",
-    "    if [ -f \"$source_marketplace\" ]; then",
-    "        mkdir -p \"$marketplace_plugins_dir\"",
-    "        rm -f \"$marketplace_plugins_dir/marketplace.json\"",
-    "        cp \"$source_marketplace\" \"$marketplace_plugins_dir/marketplace.json\" && \\",
-    "            chmod u+w \"$marketplace_plugins_dir/marketplace.json\" || \\",
-    "            echo \"Browser Use bundled marketplace sync failed; continuing with existing marketplace cache.\"",
-    "    fi",
-    "",
-    "",
-])
-if insert not in text:
-    if needle not in text:
-        raise SystemExit("Browser Use plugin cache insertion point not found")
-    text = text.replace(needle, needle + insert, 1)
-    path.write_text(text)
-PY
-            fi
-          fi
+          path = Path(sys.argv[1])
+          text = path.read_text()
+          needle = '    [ -f "$source_client" ] || return 0\n\n'
+          insert = "\n".join([
+              "    # Browser Use bundled marketplace metadata for app-server plugin discovery.",
+              "    local source_marketplace=\"$SCRIPT_DIR/resources/plugins/openai-bundled/.agents/plugins/marketplace.json\"",
+              "    local marketplace_root=\"$codex_home/.tmp/bundled-marketplaces/openai-bundled\"",
+              "    local marketplace_plugins_dir=\"$marketplace_root/.agents/plugins\"",
+              "    if [ -f \"$source_marketplace\" ]; then",
+              "        mkdir -p \"$marketplace_plugins_dir\"",
+              "        rm -f \"$marketplace_plugins_dir/marketplace.json\"",
+              "        cp \"$source_marketplace\" \"$marketplace_plugins_dir/marketplace.json\" && \\",
+              "            chmod u+w \"$marketplace_plugins_dir/marketplace.json\" || \\",
+              "            echo \"Browser Use bundled marketplace sync failed; continuing with existing marketplace cache.\"",
+              "    fi",
+              "",
+              "",
+          ])
+          if insert not in text:
+              if needle not in text:
+                  raise SystemExit("Browser Use plugin cache insertion point not found")
+              text = text.replace(needle, needle + insert, 1)
+              path.write_text(text)
+          PY
+                      fi
+                    fi
 
-          # Patch the Electron binary for NixOS.
-          if [ -f "${installDir}/electron" ]; then
-            echo "[NIX] Patching Electron binary for NixOS..."
-            patchelf --set-interpreter "$(cat ${pkgs.stdenv.cc}/nix-support/dynamic-linker)" \
-                     --set-rpath "${installDir}:${electronLibPath}" \
-                     "${installDir}/electron"
+                    # Patch the Electron binary for NixOS.
+                    if [ -f "${installDir}/electron" ]; then
+                      echo "[NIX] Patching Electron binary for NixOS..."
+                      patchelf --set-interpreter "$(cat ${pkgs.stdenv.cc}/nix-support/dynamic-linker)" \
+                               --set-rpath "${installDir}:${electronLibPath}" \
+                               "${installDir}/electron"
 
-            if [ -f "${installDir}/chrome_crashpad_handler" ]; then
-              patchelf --set-interpreter "$(cat ${pkgs.stdenv.cc}/nix-support/dynamic-linker)" \
-                       "${installDir}/chrome_crashpad_handler" || true
-            fi
+                      if [ -f "${installDir}/chrome_crashpad_handler" ]; then
+                        patchelf --set-interpreter "$(cat ${pkgs.stdenv.cc}/nix-support/dynamic-linker)" \
+                                 "${installDir}/chrome_crashpad_handler" || true
+                      fi
 
-            if [ -f "${installDir}/chrome-sandbox" ]; then
-              patchelf --set-interpreter "$(cat ${pkgs.stdenv.cc}/nix-support/dynamic-linker)" \
-                       "${installDir}/chrome-sandbox" || true
-            fi
+                      if [ -f "${installDir}/chrome-sandbox" ]; then
+                        patchelf --set-interpreter "$(cat ${pkgs.stdenv.cc}/nix-support/dynamic-linker)" \
+                                 "${installDir}/chrome-sandbox" || true
+                      fi
 
-            find "${installDir}" -maxdepth 1 -name "*.so*" -type f | while read -r so; do
-              patchelf --set-rpath "${electronLibPath}" "$so" 2>/dev/null || true
-            done
+                      find "${installDir}" -maxdepth 1 -name "*.so*" -type f | while read -r so; do
+                        patchelf --set-rpath "${electronLibPath}" "$so" 2>/dev/null || true
+                      done
 
-            echo "[NIX] Electron patched successfully"
-          fi
+                      echo "[NIX] Electron patched successfully"
+                    fi
         '';
 
         patchNixGeneratedScripts = installDir: ''
@@ -464,222 +488,243 @@ PY
           fi
         '';
 
-        linuxFeaturesConfig = linuxFeatureIds:
-          pkgs.writeText "codex-linux-features.json" (builtins.toJSON {
-            enabled = linuxFeatureIds;
-          });
+        linuxFeaturesConfig =
+          linuxFeatureIds:
+          pkgs.writeText "codex-linux-features.json" (
+            builtins.toJSON {
+              enabled = linuxFeatureIds;
+            }
+          );
 
-        enabledFeatureIds = { enableComputerUseUi ? false, linuxFeatureIds ? [ ] }:
+        enabledFeatureIds =
+          {
+            enableComputerUseUi ? false,
+            linuxFeatureIds ? [ ],
+          }:
           pkgs.lib.optionals enableComputerUseUi [ "computer-use-ui" ]
           ++ nixLinuxFeatures.normalize linuxFeatureIds;
 
-        packageSuffix = args:
+        packageSuffix =
+          args:
           let
             featureIds = enabledFeatureIds args;
           in
           if featureIds == [ ] then "" else "-${pkgs.lib.concatStringsSep "-" featureIds}";
 
-        mkCodexDesktopPayload = { enableComputerUseUi ? false, linuxFeatureIds ? [ ] }:
-        pkgs.stdenv.mkDerivation {
-          pname = "codex-desktop${packageSuffix { inherit enableComputerUseUi linuxFeatureIds; }}-payload";
-          version = codexVersion;
-          src = sourceRoot;
-          __structuredAttrs = true;
+        mkCodexDesktopPayload =
+          {
+            enableComputerUseUi ? false,
+            linuxFeatureIds ? [ ],
+          }:
+          pkgs.stdenv.mkDerivation {
+            pname = "codex-desktop${packageSuffix { inherit enableComputerUseUi linuxFeatureIds; }}-payload";
+            version = codexVersion;
+            src = sourceRoot;
+            __structuredAttrs = true;
 
-          nativeBuildInputs = [
-            pkgs.bash
-            pkgs.cargo
-            pkgs.curl
-            pkgs.gcc
-            pkgs.gnumake
-            pkgs.gnused
-            pkgs.makeWrapper
-            pkgs.nodejs
-            pkgs.asar
-            pkgs._7zz
-            pkgs.patchelf
-            pkgs.python3
-            pkgs.unzip
-            pkgs.util-linux
-          ];
+            nativeBuildInputs = [
+              pkgs.bash
+              pkgs.cargo
+              pkgs.curl
+              pkgs.gcc
+              pkgs.gnumake
+              pkgs.gnused
+              pkgs.makeWrapper
+              pkgs.nodejs
+              pkgs.asar
+              pkgs._7zz
+              pkgs.patchelf
+              pkgs.python3
+              pkgs.unzip
+              pkgs.util-linux
+            ];
 
-          dontConfigure = true;
-          dontBuild = true;
+            dontConfigure = true;
+            dontBuild = true;
 
-          installPhase = ''
-            runHook preInstall
+            installPhase = ''
+              runHook preInstall
 
-            export HOME="$TMPDIR/home"
-            export npm_config_cache="$TMPDIR/npm-cache"
-            export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
-            export NIX_SSL_CERT_FILE="$SSL_CERT_FILE"
-            export npm_config_cafile="$SSL_CERT_FILE"
-            export CARGO_HOME="$TMPDIR/cargo-home"
-            export CARGO_BUILD_JOBS=1
-            export SOURCE_DATE_EPOCH="${flakeSourceDateEpoch}"
-            ${pkgs.lib.optionalString (flakeSourceCommit != "") ''
-            export CODEX_LINUX_SOURCE_COMMIT="${flakeSourceCommit}"
-            export CODEX_LINUX_SOURCE_REMOTE="${flakeSourceRemote}"
-            ''}
-            ${pkgs.lib.optionalString enableComputerUseUi ''
-            export CODEX_LINUX_ENABLE_COMPUTER_USE_UI=1
-            ''}
-            export CFLAGS="''${CFLAGS:-} -ffile-prefix-map=$TMPDIR=/build -fdebug-prefix-map=$TMPDIR=/build -fmacro-prefix-map=$TMPDIR=/build"
-            export CXXFLAGS="''${CXXFLAGS:-} -ffile-prefix-map=$TMPDIR=/build -fdebug-prefix-map=$TMPDIR=/build -fmacro-prefix-map=$TMPDIR=/build"
-            export RUSTFLAGS="''${RUSTFLAGS:-} --remap-path-prefix=$TMPDIR=/build -C link-arg=-Wl,--build-id=none"
-            export CODEX_MANAGED_NODE_SOURCE="${pkgs.nodejs}"
-            export CODEX_LINUX_FEATURES_CONFIG="${linuxFeaturesConfig linuxFeatureIds}"
-            export CODEX_ELECTRON_ZIP_SOURCE="${electronZip}"
-            export CODEX_NATIVE_MODULES_SOURCE="${codexNativeModules}"
-            ${pkgs.lib.optionalString (browserUseNodeRepl != null) ''
-            export CODEX_LINUX_NODE_REPL_SOURCE="${browserUseNodeRepl}/bin/node_repl"
-            ''}
-            export CODEX_LINUX_COMPUTER_USE_BACKEND_SOURCE="${codexComputerUseBinaries}/bin/codex-computer-use-linux"
-            export CODEX_LINUX_COMPUTER_USE_COSMIC_SOURCE="${codexComputerUseBinaries}/bin/codex-computer-use-cosmic"
-            export CODEX_CHROME_EXTENSION_HOST_SOURCE="${codexComputerUseBinaries}/bin/codex-chrome-extension-host"
-            export CODEX_NOTIFICATION_ACTIONS_SOURCE="${codexNotificationActionsBinary}/bin/codex-notification-actions-linux"
-            ${pkgs.lib.optionalString (builtins.elem "mcp-helper-reaper" linuxFeatureIds) ''
-            export CODEX_MCP_HELPER_REAPER_SOURCE="${codexMcpHelperReaper}/bin/codex-mcp-helper-reaper"
-            ''}
-            ${pkgs.lib.optionalString (builtins.elem "global-dictation" linuxFeatureIds) ''
-            export CODEX_GLOBAL_DICTATION_LINUX_SOURCE="${codexGlobalDictationBinary}/bin/codex-global-dictation-linux"
-            ''}
-            mkdir -p "$HOME" "$npm_config_cache" "$CARGO_HOME"
+              export HOME="$TMPDIR/home"
+              export npm_config_cache="$TMPDIR/npm-cache"
+              export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+              export NIX_SSL_CERT_FILE="$SSL_CERT_FILE"
+              export npm_config_cafile="$SSL_CERT_FILE"
+              export CARGO_HOME="$TMPDIR/cargo-home"
+              export CARGO_BUILD_JOBS=1
+              export SOURCE_DATE_EPOCH="${flakeSourceDateEpoch}"
+              ${pkgs.lib.optionalString (flakeSourceCommit != "") ''
+                export CODEX_LINUX_SOURCE_COMMIT="${flakeSourceCommit}"
+                export CODEX_LINUX_SOURCE_REMOTE="${flakeSourceRemote}"
+              ''}
+              ${pkgs.lib.optionalString enableComputerUseUi ''
+                export CODEX_LINUX_ENABLE_COMPUTER_USE_UI=1
+              ''}
+              export CFLAGS="''${CFLAGS:-} -ffile-prefix-map=$TMPDIR=/build -fdebug-prefix-map=$TMPDIR=/build -fmacro-prefix-map=$TMPDIR=/build"
+              export CXXFLAGS="''${CXXFLAGS:-} -ffile-prefix-map=$TMPDIR=/build -fdebug-prefix-map=$TMPDIR=/build -fmacro-prefix-map=$TMPDIR=/build"
+              export RUSTFLAGS="''${RUSTFLAGS:-} --remap-path-prefix=$TMPDIR=/build -C link-arg=-Wl,--build-id=none"
+              export CODEX_MANAGED_NODE_SOURCE="${pkgs.nodejs}"
+              export CODEX_LINUX_FEATURES_CONFIG="${linuxFeaturesConfig linuxFeatureIds}"
+              export CODEX_ELECTRON_ZIP_SOURCE="${electronZip}"
+              export CODEX_NATIVE_MODULES_SOURCE="${codexNativeModules}"
+              ${pkgs.lib.optionalString (browserUseNodeRepl != null) ''
+                export CODEX_LINUX_NODE_REPL_SOURCE="${browserUseNodeRepl}/bin/node_repl"
+              ''}
+              export CODEX_LINUX_COMPUTER_USE_BACKEND_SOURCE="${codexComputerUseBinaries}/bin/codex-computer-use-linux"
+              export CODEX_LINUX_COMPUTER_USE_COSMIC_SOURCE="${codexComputerUseBinaries}/bin/codex-computer-use-cosmic"
+              export CODEX_CHROME_EXTENSION_HOST_SOURCE="${codexComputerUseBinaries}/bin/codex-chrome-extension-host"
+              export CODEX_NOTIFICATION_ACTIONS_SOURCE="${codexNotificationActionsBinary}/bin/codex-notification-actions-linux"
+              ${pkgs.lib.optionalString (builtins.elem "mcp-helper-reaper" linuxFeatureIds) ''
+                export CODEX_MCP_HELPER_REAPER_SOURCE="${codexMcpHelperReaper}/bin/codex-mcp-helper-reaper"
+              ''}
+              ${pkgs.lib.optionalString (builtins.elem "global-dictation" linuxFeatureIds) ''
+                export CODEX_GLOBAL_DICTATION_LINUX_SOURCE="${codexGlobalDictationBinary}/bin/codex-global-dictation-linux"
+              ''}
+              mkdir -p "$HOME" "$npm_config_cache" "$CARGO_HOME"
 
-            source_dir="$TMPDIR/codex-source"
-            mkdir -p "$source_dir"
-            cp -R ./. "$source_dir/"
-            chmod -R u+w "$source_dir"
-            cp ${codexDmg} "$source_dir/Codex.dmg"
+              source_dir="$TMPDIR/codex-source"
+              mkdir -p "$source_dir"
+              cp -R ./. "$source_dir/"
+              chmod -R u+w "$source_dir"
+              cp ${codexDmg} "$source_dir/Codex.dmg"
 
-            substituteInPlace "$source_dir/scripts/lib/asar-patch.sh" \
-              --replace-fail "npx --yes asar" "asar" \
-              --replace-fail "npx asar" "asar"
-            substituteInPlace "$source_dir/scripts/lib/dmg.sh" \
-              --replace-fail "npx --yes asar" "asar"
+              substituteInPlace "$source_dir/scripts/lib/asar-patch.sh" \
+                --replace-fail "npx --yes asar" "asar" \
+                --replace-fail "npx asar" "asar"
+              substituteInPlace "$source_dir/scripts/lib/dmg.sh" \
+                --replace-fail "npx --yes asar" "asar"
 
-            export CODEX_INSTALL_DIR="$out/opt/codex-desktop"
-            ${pkgs.bash}/bin/bash "$source_dir/install.sh" "$source_dir/Codex.dmg"
+              export CODEX_INSTALL_DIR="$out/opt/codex-desktop"
+              ${pkgs.bash}/bin/bash "$source_dir/install.sh" "$source_dir/Codex.dmg"
 
-            asar extract "$CODEX_INSTALL_DIR/resources/app.asar" "$CODEX_INSTALL_DIR/resources/app-extracted"
-            rm -f "$CODEX_INSTALL_DIR/resources/app.asar"
-            rm -rf "$CODEX_INSTALL_DIR/resources/app.asar.unpacked"
+              asar extract "$CODEX_INSTALL_DIR/resources/app.asar" "$CODEX_INSTALL_DIR/resources/app-extracted"
+              rm -f "$CODEX_INSTALL_DIR/resources/app.asar"
+              rm -rf "$CODEX_INSTALL_DIR/resources/app.asar.unpacked"
 
-            ${patchNixGeneratedScripts "$out/opt/codex-desktop"}
+              ${patchNixGeneratedScripts "$out/opt/codex-desktop"}
 
-            runHook postInstall
-          '';
-        };
-
-        buildCodexDesktop = { enableComputerUseUi ? false, linuxFeatureIds ? [ ] }:
-        let
-          normalizedLinuxFeatureIds = nixLinuxFeatures.normalize linuxFeatureIds;
-          featureArgs = {
-            inherit enableComputerUseUi;
-            linuxFeatureIds = normalizedLinuxFeatureIds;
+              runHook postInstall
+            '';
           };
-          payload = mkCodexDesktopPayload {
-            inherit enableComputerUseUi;
-            linuxFeatureIds = normalizedLinuxFeatureIds;
-          };
-          payloadLauncherPath = launcherPath + pkgs.lib.optionalString
-            (builtins.elem "global-dictation" normalizedLinuxFeatureIds)
-            ":${globalDictationRuntimePath}";
-        in
-        pkgs.stdenv.mkDerivation {
-          pname = "codex-desktop${packageSuffix featureArgs}";
-          version = codexVersion;
-          src = payload;
 
-          nativeBuildInputs = [
-            pkgs.asar
-            pkgs.makeWrapper
-            pkgs.patchelf
-          ];
+        buildCodexDesktop =
+          {
+            enableComputerUseUi ? false,
+            linuxFeatureIds ? [ ],
+          }:
+          let
+            normalizedLinuxFeatureIds = nixLinuxFeatures.normalize linuxFeatureIds;
+            featureArgs = {
+              inherit enableComputerUseUi;
+              linuxFeatureIds = normalizedLinuxFeatureIds;
+            };
+            payload = mkCodexDesktopPayload {
+              inherit enableComputerUseUi;
+              linuxFeatureIds = normalizedLinuxFeatureIds;
+            };
+            payloadLauncherPath =
+              launcherPath
+              + pkgs.lib.optionalString (builtins.elem "global-dictation" normalizedLinuxFeatureIds) ":${globalDictationRuntimePath}";
+          in
+          pkgs.stdenv.mkDerivation {
+            pname = "codex-desktop${packageSuffix featureArgs}";
+            version = codexVersion;
+            src = payload;
 
-          dontConfigure = true;
-          dontBuild = true;
+            nativeBuildInputs = [
+              pkgs.asar
+              pkgs.makeWrapper
+              pkgs.patchelf
+            ];
 
-          installPhase = ''
-            runHook preInstall
+            dontConfigure = true;
+            dontBuild = true;
 
-            mkdir -p "$out/opt"
-            cp -aT "$src/opt/codex-desktop" "$out/opt/codex-desktop"
-            chmod -R u+w "$out/opt/codex-desktop"
-            rm -rf "$out/opt/codex-desktop/resources/node-runtime"
-            ln -s ${pkgs.nodejs} "$out/opt/codex-desktop/resources/node-runtime"
-            if [ -e "$out/opt/codex-desktop/update-builder/node-runtime" ]; then
-              rm -rf "$out/opt/codex-desktop/update-builder/node-runtime"
-              ln -s ${pkgs.nodejs} "$out/opt/codex-desktop/update-builder/node-runtime"
-            fi
+            installPhase = ''
+              runHook preInstall
 
-            resources_dir="$out/opt/codex-desktop/resources"
-            (cd "$resources_dir/app-extracted" && find . -type f | LC_ALL=C sort | sed 's#^\./##') > "$TMPDIR/app.asar.ordering"
-            asar pack "$resources_dir/app-extracted" "$resources_dir/app.asar" \
-              --ordering "$TMPDIR/app.asar.ordering" \
-              --unpack "{*.node,*.so,*.dylib}"
-            rm -rf "$resources_dir/app-extracted"
-
-            for node_repl_binary in \
-              "$resources_dir/node_repl" \
-              "$resources_dir/node_repl.codex-linux-original"; do
-              if [ -f "$node_repl_binary" ] \
-                  && [ "$(dd if="$node_repl_binary" bs=1 count=4 2>/dev/null | od -An -tx1 | tr -d ' \n')" = "7f454c46" ]; then
-                patchelf --set-interpreter "$(cat ${pkgs.stdenv.cc}/nix-support/dynamic-linker)" \
-                  --set-rpath "${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib pkgs.glibc ]}" \
-                  "$node_repl_binary"
+              mkdir -p "$out/opt"
+              cp -aT "$src/opt/codex-desktop" "$out/opt/codex-desktop"
+              chmod -R u+w "$out/opt/codex-desktop"
+              rm -rf "$out/opt/codex-desktop/resources/node-runtime"
+              ln -s ${pkgs.nodejs} "$out/opt/codex-desktop/resources/node-runtime"
+              if [ -e "$out/opt/codex-desktop/update-builder/node-runtime" ]; then
+                rm -rf "$out/opt/codex-desktop/update-builder/node-runtime"
+                ln -s ${pkgs.nodejs} "$out/opt/codex-desktop/update-builder/node-runtime"
               fi
-            done
 
-            if [ -f "$resources_dir/node_repl.codex-linux-original" ]; then
-              node_repl_interpreter="$(patchelf --print-interpreter \
-                "$resources_dir/node_repl.codex-linux-original")"
-              node_repl_rpath="$(patchelf --print-rpath \
-                "$resources_dir/node_repl.codex-linux-original")"
-              case "$node_repl_interpreter" in
-                /nix/store/*) ;;
-                *) echo "node_repl backup has non-Nix interpreter: $node_repl_interpreter" >&2; exit 1 ;;
-              esac
-              case "$node_repl_rpath" in
-                *"/nix/store/"*) ;;
-                *) echo "node_repl backup has non-Nix RPATH: $node_repl_rpath" >&2; exit 1 ;;
-              esac
-            fi
+              resources_dir="$out/opt/codex-desktop/resources"
+              (cd "$resources_dir/app-extracted" && find . -type f | LC_ALL=C sort | sed 's#^\./##') > "$TMPDIR/app.asar.ordering"
+              asar pack "$resources_dir/app-extracted" "$resources_dir/app.asar" \
+                --ordering "$TMPDIR/app.asar.ordering" \
+                --unpack "{*.node,*.so,*.dylib}"
+              rm -rf "$resources_dir/app-extracted"
 
-            ${patchNixInstalledApp "$out/opt/codex-desktop"}
+              for node_repl_binary in \
+                "$resources_dir/node_repl" \
+                "$resources_dir/node_repl.codex-linux-original"; do
+                if [ -f "$node_repl_binary" ] \
+                    && [ "$(dd if="$node_repl_binary" bs=1 count=4 2>/dev/null | od -An -tx1 | tr -d ' \n')" = "7f454c46" ]; then
+                  patchelf --set-interpreter "$(cat ${pkgs.stdenv.cc}/nix-support/dynamic-linker)" \
+                    --set-rpath "${
+                      pkgs.lib.makeLibraryPath [
+                        pkgs.stdenv.cc.cc.lib
+                        pkgs.glibc
+                      ]
+                    }" \
+                    "$node_repl_binary"
+                fi
+              done
 
-            install -Dm0644 "$out/opt/codex-desktop/.codex-linux/codex-desktop.png" \
-              "$out/share/icons/hicolor/256x256/apps/codex-desktop.png"
+              if [ -f "$resources_dir/node_repl.codex-linux-original" ]; then
+                node_repl_interpreter="$(patchelf --print-interpreter \
+                  "$resources_dir/node_repl.codex-linux-original")"
+                node_repl_rpath="$(patchelf --print-rpath \
+                  "$resources_dir/node_repl.codex-linux-original")"
+                case "$node_repl_interpreter" in
+                  /nix/store/*) ;;
+                  *) echo "node_repl backup has non-Nix interpreter: $node_repl_interpreter" >&2; exit 1 ;;
+                esac
+                case "$node_repl_rpath" in
+                  *"/nix/store/"*) ;;
+                  *) echo "node_repl backup has non-Nix RPATH: $node_repl_rpath" >&2; exit 1 ;;
+                esac
+              fi
 
-            install -Dm0644 ${sourceRoot}/packaging/linux/codex-desktop.desktop \
-              "$out/share/applications/codex-desktop.desktop"
-            substituteInPlace "$out/share/applications/codex-desktop.desktop" \
-              --replace-fail "/usr/bin/codex-desktop" "$out/bin/codex-desktop" \
-              --replace-fail "/usr/share/applications/codex-desktop.desktop" "$out/share/applications/codex-desktop.desktop"
+              ${patchNixInstalledApp "$out/opt/codex-desktop"}
 
-            makeWrapper "$out/opt/codex-desktop/start.sh" "$out/bin/codex-desktop" \
-              --prefix PATH : "${payloadLauncherPath}" \
-              --prefix PATH : "/run/current-system/sw/bin" \
-              --prefix PATH : "/etc/profiles/per-user/$(whoami)/bin"
+              install -Dm0644 "$out/opt/codex-desktop/.codex-linux/codex-desktop.png" \
+                "$out/share/icons/hicolor/256x256/apps/codex-desktop.png"
 
-            runHook postInstall
-          '';
+              install -Dm0644 ${sourceRoot}/packaging/linux/codex-desktop.desktop \
+                "$out/share/applications/codex-desktop.desktop"
+              substituteInPlace "$out/share/applications/codex-desktop.desktop" \
+                --replace-fail "/usr/bin/codex-desktop" "$out/bin/codex-desktop" \
+                --replace-fail "/usr/share/applications/codex-desktop.desktop" "$out/share/applications/codex-desktop.desktop"
 
-          meta = {
-            description =
-              let
-                featureIds = enabledFeatureIds featureArgs;
-              in
-              if featureIds == [ ] then
-                "ChatGPT Desktop for Linux"
-              else
-                "ChatGPT Desktop for Linux with ${pkgs.lib.concatStringsSep ", " featureIds} enabled";
-            homepage = "https://github.com/ilysenko/codex-desktop-linux";
-            license = pkgs.lib.licenses.mit;
-            platforms = pkgs.lib.platforms.linux;
-            mainProgram = "codex-desktop";
+              makeWrapper "$out/opt/codex-desktop/start.sh" "$out/bin/codex-desktop" \
+                --prefix PATH : "${payloadLauncherPath}" \
+                --prefix PATH : "/run/current-system/sw/bin" \
+                --prefix PATH : "/etc/profiles/per-user/$(whoami)/bin"
+
+              runHook postInstall
+            '';
+
+            meta = {
+              description =
+                let
+                  featureIds = enabledFeatureIds featureArgs;
+                in
+                if featureIds == [ ] then
+                  "ChatGPT Desktop for Linux"
+                else
+                  "ChatGPT Desktop for Linux with ${pkgs.lib.concatStringsSep ", " featureIds} enabled";
+              homepage = "https://github.com/ilysenko/codex-desktop-linux";
+              license = pkgs.lib.licenses.mit;
+              platforms = pkgs.lib.platforms.linux;
+              mainProgram = "codex-desktop";
+            };
           };
-        };
 
         codexDesktop = pkgs.lib.makeOverridable buildCodexDesktop { };
 
@@ -809,7 +854,8 @@ PY
           ];
         };
       }
-    ) // {
+    )
+    // {
       homeManagerModules = rec {
         default = import ./nix/home-manager-module.nix { inherit self; };
         codex-desktop-linux = default;
